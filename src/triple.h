@@ -75,8 +75,6 @@ class Triple
         Triple normalized() const;              // normalized COPY
         void normalize();                       // normalize THIS
 
-        Triple refract(Triple &N, double eta); //ADDED BY MYSELF
-
 // --- Color functions ---------------------------------------------------------
 
         void set(double f);                     // set all values to f

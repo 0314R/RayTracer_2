@@ -56,7 +56,7 @@ unsigned Image::size() const
 }
 
 // Normalized accessors, unsignederval is (0...1, 0...1)
-// usefull for texture access
+// useful for texture access
 Color const &Image::colorAt(float x, float y) const
 {
     return d_pixels.at(findex(x, y));

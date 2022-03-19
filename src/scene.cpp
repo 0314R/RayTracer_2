@@ -59,86 +59,97 @@ Color Scene::trace(Ray const &ray, unsigned depth)
     // Add ambient once, regardless of the number of lights.
     Color color = material.ka * matColor;
 
-    Point epsHit = hit + epsilon * shadingN;
+    Point epsilonH = hit + epsilon * shadingN;
+    Vector uv = obj->toUV(hit);
+
+    if (material.hasTexture)
+    {
+        color = material.ka * material.texture.colorAt(uv.x, 1 - uv.y);
+    }
 
     // Add diffuse and specular components.
     for (auto const &light : lights)
     {
         Vector L = (light->position - hit).normalized();
 
-        //-------------------------------------------------------------------MYOWN PART START
-        Ray shadowRay(epsHit, L);
-        pair<ObjectPtr, Hit> shadowHit = castRay(shadowRay);
-        if (renderShadows && shadowHit.first && shadowHit.second.t < (light->position - hit).length() ){
+        Ray shadowRay(epsilonH, L);
+        pair<ObjectPtr, Hit> shadowH = castRay(shadowRay);
+        if (renderShadows && shadowH.first && shadowH.second.t < (light->position - hit).length())
+        {
             continue;
         }
 
-        //-------------------------------------------------------------------MYOWN PART END
-
         // Add diffuse.
-        double diffuse = std::max(shadingN.dot(L), 0.0);
-        color += diffuse * material.kd * light->color * matColor;
+        double dotNormal = shadingN.dot(L);
+        double diffuse = std::max(dotNormal, 0.0);
+        if (material.hasTexture)
+        {
+            Vector uv = obj->toUV(hit);
+            Color texColor = material.texture.colorAt(uv.x, 1.0 - uv.y);
+            color += diffuse * material.kd * light->color * texColor;
+        }
+        else
+        {
+            color += diffuse * material.kd * light->color * matColor;
+        }
 
         // Add specular.
-        Vector reflectDir = reflect(-L, shadingN);
-        double specAngle = std::max(reflectDir.dot(V), 0.0);
-        double specular = std::pow(specAngle, material.n);
+        if (dotNormal > 0)
+        {
+            Vector reflectDir = reflect(-L, shadingN); // Note: reflect(..) is not given in the framework.
+            double specAngle = std::max(reflectDir.dot(V), 0.0);
+            double specular = std::pow(specAngle, material.n);
 
-        color += specular * material.ks * light->color;
+            color += specular * material.ks * light->color;
+        }
     }
 
     if (depth > 0 and material.isTransparent)
     {
         // The object is transparent, and thus refracts and reflects light.
         // Use Schlick's approximation to determine the ratio between the two.
-
         double ni, nt;
-        Vector D = ray.D;
+        Vector direction = ray.D;
 
-        if(N.dot(V) <= 0.0){
-            N = -N;
-            ni = material.nt;
-            nt = 1;
-        } else {
+        if (N.dot(V) > 0.0)
+        {
             ni = 1;
             nt = material.nt;
         }
-        double r0 = ((ni - nt)/(ni + nt))*((ni - nt)/(ni + nt));
-        double incidentAngle = acos(N.dot(V));
-        if (incidentAngle > 3.1416 / 2) printf("angle %lf\n", incidentAngle);
-        double refractAngle = asin( ni * sin(incidentAngle) / nt );
-        double kr = r0 + (1-r0)*pow((1-cos(incidentAngle)),5);
+        else
+        {
+            N = -N;
+            ni = material.nt;
+            nt = 1;
+        }
+
+        double kr0 = ((ni - nt) / (ni + nt)) * ((ni - nt) / (ni + nt));
+        double incident = acos(N.dot(V));
+        double refractive = asin(ni * sin(incident) / nt);
+        double kr = kr0 + (1 - kr0) * pow((1 - cos(incident)), 5);
         double kt = 1 - kr;
 
-        //printf("%lf %lf\n", incidentAngle/3.1415*180, refractAngle/3.1415*180);
-        //Vector R = r0 + (1-r0)*(1-cos())
+        Vector B = (N * (N.dot(V)) + direction) / sin(incident);
+        Vector T = B * sin(refractive) - N * cos(refractive);
+        Vector reflectDir = reflect(-V, N);
 
-        Vector B = ( N*(N.dot(V)) + D) / sin(incidentAngle);
+        Ray reflectRay = Ray(hit + epsilon * N, reflectDir);
+        Ray refractRay = Ray(hit - epsilon * N, T);
 
-        Vector T = B*sin(refractAngle) - N*cos(refractAngle);
-        //printf("%lf\n", N.dot(B));
-        //printf("D %lf %lf %lf\n T %lf %lf %lf\n", D.x, D.y, D.z, T.x, T.y, T.z);
+        Color reflectColor = trace(reflectRay, depth - 1);
+        color += kr * reflectColor;
 
-        Vector reflecDir = reflect(-V, N);
-        Ray reflecRay = Ray(hit + epsilon*N, reflecDir);
-        Ray refracRay = Ray(hit - epsilon*N, T);
-
-        //if(kr > 1 || kt > 1) printf("%lf %lf\n", kr, kt);
-        Color reflecColor = trace(reflecRay, depth-1);
-        color += kr * reflecColor;
-
-        Color refracColor = trace(refracRay, depth-1);
-        color += kt * refracColor;
-
+        Color refractColor = trace(refractRay, depth - 1);
+        color += kt * refractColor;
     }
     else if (depth > 0 and material.ks > 0.0)
     {
         // The object is not transparent, but opaque.
-        Vector reflecDir = reflect(-V, N);
-        Ray reflecRay = Ray(epsHit, reflecDir);
+        Vector directionR = reflect(-V, N);
+        Ray rayReflect = Ray(epsilonH, directionR);
 
-        Color colorAdd = trace(reflecRay, depth-1);
-        color += material.ks * colorAdd;
+        Color newColor = trace(rayReflect, depth - 1);
+        color += material.ks * newColor;
     }
 
     return color;
@@ -146,27 +157,27 @@ Color Scene::trace(Ray const &ray, unsigned depth)
 
 void Scene::render(Image &img)
 {
-	Color col;
-	double step;
-	unsigned w = img.width();
+    unsigned w = img.width();
     unsigned h = img.height();
-	int i, j, ssf = (int)supersamplingFactor;
 
     for (unsigned y = 0; y < h; ++y)
         for (unsigned x = 0; x < w; ++x)
         {
-			col = Color(0, 0, 0);
-            step = 0.5 / supersamplingFactor;
-            for (i = -1; i < ssf * 2 + 1; i += 2)
-            {
-                for (j = -1; j < ssf * 2 + 1; j += 2)
-                {
-                    Point pixel(x + step * i, h - 1 - y + step * j, 0);
-                    Ray ray(eye, (pixel - eye).normalized());
-                    col += trace(ray, recursionDepth).operator/(pow(supersamplingFactor + 1, 2));
-                }
-            }
+            // Color col = Color(0, 0, 0);
+            // double step = 0.5 / supersamplingFactor;
+            // for (int z = -1; z < (int)supersamplingFactor * 2 + 1; z += 2)
+            // {
+            //     for (int a = -1; a < (int)supersamplingFactor * 2 + 1; a += 2)
+            //     {
+            //         Point pixel(x + step * z, h - 1 - y + step * a, 0);
+            //         Ray ray(eye, (pixel - eye).normalized());
+            //         col += trace(ray, recursionDepth).operator/(pow(supersamplingFactor + 1, 2));
+            //     }
+            // }
 
+            Point pixel(x + 0.5, h - 1 - y + 0.5, 0);
+            Ray ray(eye, (pixel - eye).normalized());
+            Color col = trace(ray, recursionDepth);
             col.clamp();
             img(x, y) = col;
         }
@@ -176,14 +187,14 @@ void Scene::render(Image &img)
 
 // Defaults
 Scene::Scene()
-:
-    objects(),
-    lights(),
-    eye(),
-    renderShadows(false),
-    recursionDepth(0),
-    supersamplingFactor(1)
-{}
+    : objects(),
+      lights(),
+      eye(),
+      renderShadows(false),
+      recursionDepth(0),
+      supersamplingFactor(1)
+{
+}
 
 void Scene::addObject(ObjectPtr obj)
 {

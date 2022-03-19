@@ -21,9 +21,9 @@ Hit Sphere::intersect(Ray const &ray)
         return Hit::NO_HIT();
 
     // t0 is closest hit
-    if (t0 < 0.0)  // check if it is not behind the camera
+    if (t0 < 0.0) // check if it is not behind the camera
     {
-        t0 = t1;    // try t1
+        t0 = t1;      // try t1
         if (t0 < 0.0) // both behind the camera
             return Hit::NO_HIT();
     }
@@ -41,18 +41,22 @@ Hit Sphere::intersect(Ray const &ray)
 Vector Sphere::toUV(Point const &hit)
 {
     // placeholders
-    double u = 0.0;
-    double v = 0.0;
+    double u = 0.5 - (atan2((position - hit).y, (hit - position).x) / (2 * PI));
+    // double u = 0.5 - (atan2((hit - position).x, (hit - position).y) / (2 * PI));
+    double v = 1 - (acos((hit - position).z / r) / PI);
+
+    // double u = 0.5 + (atan2((-hit + position).x, (-hit + position).y) / (2 * PI));
+    // double v = 1 - (acos((hit - position).z / r) / PI);
 
     // Use a Vector to return 2 doubles. The third value is never read.
-    return Vector{u, v, 0.0};
+    return Vector(u, v, 0.0);
 }
 
-Sphere::Sphere(Point const &pos, double radius, Vector const& axis, double angle)
-:
-    // Feel free to modify this constructor.
-    position(pos),
-    r(radius),
-    axis(axis),
-    angle(angle)
-{}
+Sphere::Sphere(Point const &pos, double radius, Vector const &axis, double angle)
+    : // Feel free to modify this constructor.
+      position(pos),
+      r(radius),
+      axis(axis),
+      angle(angle)
+{
+}

@@ -31,7 +31,7 @@ class Image
         unsigned size() const;
 
         // Normalized accessors, unsignederval is (0...1, 0...1)
-        // usefull for texture access
+        // useful for texture access
         Color const &colorAt(float x, float y) const;
 
         void write_png(std::string const &filename) const;

@@ -164,12 +164,6 @@ void Triple::normalize()
     z *= invlen;
 }
 
-// ADDED BY MYSELF TODO delete this probably not necessary
-Triple Triple::refract(Triple &N, double eta)
-{
-    return N;
-}
-
 // --- Color functions ---------------------------------------------------------
 
 void Triple::set(double f)
